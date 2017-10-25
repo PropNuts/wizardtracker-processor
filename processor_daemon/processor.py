@@ -4,7 +4,7 @@ import queue
 LOGGER = logging.getLogger(__name__)
 
 
-def lowpass_filter(last_value, value, alpha=0.95):
+def lowpass_filter(last_value, value, alpha=0.05):
     return last_value + (alpha * (value - last_value))
 
 
@@ -50,9 +50,7 @@ class DataProcessor:
         if not last_filtered_rssi:
             last_filtered_rssi = list(rssi)
 
-        rssi_with_last = zip(rssi, last_filtered_rssi)
+        rssi_with_last = zip(last_filtered_rssi, rssi)
         filtered_rssi = [lowpass_filter(l, v) for l, v in rssi_with_last]
 
         return filtered_rssi
-
-
