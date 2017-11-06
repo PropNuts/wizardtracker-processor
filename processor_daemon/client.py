@@ -1,36 +1,33 @@
 import logging
+import json
 import socket
 
+import redis
 
 LOGGER = logging.getLogger(__name__)
 
 
 class DataStreamClient:
-    HOST = '127.0.0.1'
-    PORT = 3092
 
     def __init__(self, processor):
-        self._sock = None
-        self._sock_file = None
-
         self._processor = processor
+
+        self._redis = None
+        self._redis_pubsub = None
 
         self._should_stop = False
 
     def start(self):
         LOGGER.info('Starting up...')
-        LOGGER.info('Connecting to %s:%d...',
-            DataStreamClient.HOST,
-            DataStreamClient.PORT
-        )
 
-        self._sock = socket.create_connection(
-            (DataStreamClient.HOST, DataStreamClient.PORT)
-        )
+        self._redis = redis.StrictRedis(decode_responses=True)
+        self._redis.ping()
 
-        LOGGER.info('Connected!')
+        LOGGER.info('Connected to Redis!')
 
-        self._sock_file = self._sock.makefile()
+        self._redis_pubsub = self._redis.pubsub(ignore_subscribe_messages=True)
+        self._redis_pubsub.subscribe('rssiRaw')
+
         while not self._should_stop:
             self._loop()
 
@@ -40,10 +37,9 @@ class DataStreamClient:
         self._should_stop = True
 
     def _loop(self):
-        data = self._sock_file.readline().strip()
-        data_split = data.split(' ')
+        message = self._redis_pubsub.get_message()
+        if not message or message['channel'] != 'rssiRaw':
+            return
 
-        self._processor.queue_data({
-            'timestamp': float(data_split[0]),
-            'rssi': [int(d) for d in data_split[1:]]
-        })
+        data = json.loads(message['data'])
+        self._processor.queue_data(data)

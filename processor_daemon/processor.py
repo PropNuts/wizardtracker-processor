@@ -1,11 +1,14 @@
 import logging
+import json
 import queue
+
+import redis
 
 
 LOGGER = logging.getLogger(__name__)
 
 
-def lowpass_filter(last_value, value, alpha=0.05):
+def lowpass_filter(last_value, value, alpha=0.025):
     return last_value + (alpha * (value - last_value))
 
 
@@ -13,11 +16,19 @@ class DataProcessor:
     def __init__(self):
         self._queue = queue.Queue()
         self._should_stop = False
-
         self._last_filtered_rssi = None
+
+        self._redis = None
+        self._redis_pubsub = None
 
     def start(self):
         LOGGER.info('Starting up...')
+
+        self._redis = redis.StrictRedis()
+        self._redis.ping()
+
+        LOGGER.info('Connected to Redis!')
+
         while not self._should_stop:
             self._loop()
 
@@ -45,6 +56,13 @@ class DataProcessor:
 
         filtered_rssi = self._filter_rssi(rssi, self._last_filtered_rssi)
         self._last_filtered_rssi = filtered_rssi
+
+        data_json = json.dumps({
+            'rssi': filtered_rssi,
+            'timestamp': timestamp
+        })
+
+        self._redis.publish('rssiFiltered', data_json)
 
     @staticmethod
     def _filter_rssi(rssi, last_filtered_rssi):
